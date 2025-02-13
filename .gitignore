@@ -1,0 +1,9 @@
+*.png
+*.ptx
+dist/
+venv/
+.vscode/
+build/
+src/*.egg-info
+*/**/__pycache__/
+*.sif

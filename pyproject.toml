@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poisson_icing"
+version = "0.1.0"
+description = "Gibbs sampling for the Poisson-Ising model"
+license = { file = "LICENSE" }
+authors = [{ name = "Sherman Lo", email = "s.lo@qmul.ac.uk" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy"]
+
+[project.optional-dependencies]
+cuda11x = ["cupy-cuda11x"]
+cuda12x = ["cupy-cuda12x"]
+test = ["pytest", "matplotlib", "pytest-benchmark"]
+
+[tool.setuptools.package-data]
+"*" = ["*.ptx"]
+
+[tool.ruff]
+line-length = 80
