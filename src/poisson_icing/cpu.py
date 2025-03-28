@@ -76,6 +76,72 @@ def _get_shifted_checkerboards(checkerboards):
     return shifted_checkerboards
 
 
+def _sample(
+    rate_param,
+    interaction,
+    max_value,
+    checkerboard_padded,
+    shifted_checkerboards,
+    n_terms,
+    rng,
+    image_padded,
+    prob_terms,
+):
+    """Do one iteration of Gibbs sampling
+
+    Args:
+        rate_param (np.darray): matrix, of size height x width, of non-zero
+            poisson rates
+        interaction (float): interaction term, real number
+        max_value (int): the highest value + 1 to use
+        checkerboard_padded (np.darray): matrix of Booleans of size (height + 2)
+            x (width + 2) in a padded checkerboard layout. Can be one of the
+            outputs of _get_checkerboards()
+        shifted_checkerboards (list):  list of matrices of Booleans of size
+            (height + 2) x (width + 2) in a shifted padded checkerboard layout.
+            Can be one of the outputs of _get_shifted_checkerboards()
+        n_terms (int): number of True values in checkerboard_padded
+        rng: random number generator
+        image_padded (np.darray): matrix of integers of size (height + 2)
+            x (width + 2). The image to be sampled padded
+        prob_terms (np.darray): matrix of floats of size n_terms x max_value. A
+            temporary matrix to store values of the conditional probability mass
+            function
+    """
+    # get checkerboard without padding
+    checkerboard = checkerboard_padded[1:-1, 1:-1]
+
+    # calculate and store the log probability mass, up to a constant, for
+    # each poisson value up to max_value
+    for poisson_value in range(max_value):
+        # poisson pmf
+        rate_array = rate_param[checkerboard]
+        log_prob = np.float32(
+            poisson_value * np.log(rate_array)
+            - special.loggamma(poisson_value + 1)
+        )
+
+        # interaction terms
+        for shifted_checkerboard_i in shifted_checkerboards:
+            log_prob += np.float32(
+                -interaction
+                * np.square(
+                    image_padded[shifted_checkerboard_i] - poisson_value
+                )
+            )
+
+        # store the log probability mass terms
+        prob_terms[:, poisson_value] = log_prob
+
+    # normalise terms
+    prob_terms = np.exp(prob_terms)
+    prob_terms /= np.sum(prob_terms, axis=1, keepdims=True)
+
+    # sample from the normalised distribution
+    index = rng.random([n_terms, 1]) < np.cumsum(prob_terms, 1)
+    image_padded[checkerboard_padded] = np.argmax(index, 1)
+
+
 def sample(rate_param, interaction, n_sample, n_thin, initial_image, rng):
     """Do Gibbs sampling
 
@@ -131,43 +197,17 @@ def sample(rate_param, interaction, n_sample, n_thin, initial_image, rng):
         # copy to boundaries
         image_padded = np.pad(image_padded[1:-1, 1:-1], 1, "symmetric")
 
-        # get checkerboards
-        checkerboard_padded_i = checkerboards[i_iter % 2]
-        checkerboard_i = checkerboard_padded_i[1:-1, 1:-1]
-        n_terms_i = n_terms[i_iter % 2]
-
-        # temporary variable for storing probability terms
-        prob_terms = prob_terms_array[i_iter % 2]
-
-        # calculate and store the log probability mass, up to a constant, for
-        # each poisson value up to max_value
-        for poisson_value in range(max_value):
-            # poisson pmf
-            rate_array = rate_param[checkerboard_i]
-            log_prob = np.float32(
-                poisson_value * np.log(rate_array)
-                - special.loggamma(poisson_value + 1)
-            )
-
-            # interaction terms
-            for shifted_checkerboard_i in shifted_checkerboards[i_iter % 2]:
-                log_prob += np.float32(
-                    -interaction
-                    * np.square(
-                        image_padded[shifted_checkerboard_i] - poisson_value
-                    )
-                )
-
-            # store the log probability mass terms
-            prob_terms[:, poisson_value] = log_prob
-
-        # normalise terms
-        prob_terms = np.exp(prob_terms)
-        prob_terms /= np.sum(prob_terms, axis=1, keepdims=True)
-
-        # sample from the normalised distribution
-        index = rng.random([n_terms_i, 1]) < np.cumsum(prob_terms, 1)
-        image_padded[checkerboard_padded_i] = np.argmax(index, 1)
+        _sample(
+            rate_param,
+            interaction,
+            max_value,
+            checkerboards[i_iter % 2],
+            shifted_checkerboards[i_iter % 2],
+            n_terms[i_iter % 2],
+            rng,
+            image_padded,
+            prob_terms_array[i_iter % 2],
+        )
 
         # save the sample
         if (i_iter % n_thin) == (n_thin - 1):
