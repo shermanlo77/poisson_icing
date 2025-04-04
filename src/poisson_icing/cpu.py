@@ -175,8 +175,8 @@ def sample(rate_param, interaction, n_sample, n_thin, initial_image, rng):
     image_array = np.zeros((n_sample, height, width), dtype=np.int32)
 
     # initial image
-    image_padded = np.zeros([height + 2, width + 2], dtype=np.int32)
-    image_padded[1:-1, 1:-1] = initial_image
+    initial_image = np.astype(initial_image, np.int32)
+    image_padded = np.pad(initial_image, 1, "symmetric")
 
     # get checkerboards
     checkerboards, n_terms = _get_checkerboards(height, width)
@@ -194,8 +194,6 @@ def sample(rate_param, interaction, n_sample, n_thin, initial_image, rng):
     # gibbs sampling here, switch between white and black after every sample
     sample_id = 0
     for i_iter in range(n_sample * n_thin):
-        # copy to boundaries
-        image_padded = np.pad(image_padded[1:-1, 1:-1], 1, "symmetric")
 
         _sample(
             rate_param,
@@ -208,6 +206,8 @@ def sample(rate_param, interaction, n_sample, n_thin, initial_image, rng):
             image_padded,
             prob_terms_array[i_iter % 2],
         )
+
+        image_padded = np.pad(image_padded[1:-1, 1:-1], 1, "symmetric")
 
         # save the sample
         if (i_iter % n_thin) == (n_thin - 1):
