@@ -1,4 +1,3 @@
-import ctypes
 import math
 
 import cupy
@@ -144,12 +143,19 @@ def test_checkerboard(
         assert np.unique((x + y) % 2).size == 1
 
 
-@pytest.mark.parametrize("width", [24, 25])
-@pytest.mark.parametrize("height", [12])
+@pytest.mark.parametrize("width", [24, 25, 26, 27, 28, 29, 30])
+@pytest.mark.parametrize("height", [12, 13])
 @pytest.mark.parametrize("rate", [1.0])
-@pytest.mark.parametrize("seed", [319177124816097325326554460856810870872])
+@pytest.mark.parametrize(
+    "seed",
+    [
+        319177124816097325326554460856810870872,
+        18780873665392869462041247026533354832,
+        18879499111372849442521197495859824697,
+    ],
+)
 @pytest.mark.parametrize("block_dim", [(4, 4)])
-@pytest.mark.parametrize("shared_mem_buff", [0, 2])
+@pytest.mark.parametrize("shared_mem_buff", [0, 2, 6])
 def test_shared_mem(width, height, initial_image, block_dim, shared_mem_buff):
     n_block = (
         math.ceil(width / block_dim[0] / 2),
@@ -160,33 +166,25 @@ def test_shared_mem(width, height, initial_image, block_dim, shared_mem_buff):
         for block_id_x in range(n_block[0]):
             with cupy.cuda.Device():
                 module = cupy.RawModule(path=poisson_icing.gpu.PTX_FILE_PATH)
-                shared_mem_width = 2 * block_dim[0] + 2 + shared_mem_buff
-                shared_mem_size = (
-                    shared_mem_width
-                    * (block_dim[1] + 2)
-                    * ctypes.sizeof(ctypes.c_int32)
+
+                shared_mem_width, shared_mem_size = (
+                    poisson_icing.gpu._get_shared_mem_size(
+                        0, block_dim, shared_mem_buff
+                    )
                 )
 
                 # transfer to gpu
                 d_image = cupy.asarray(initial_image, cupy.int32)
 
+                # for copying content of shared memory (to global memory)
                 d_shared_mem = cupy.zeros(
                     (block_dim[1] + 2, shared_mem_width), cupy.int32
                 )
 
                 kernel = module.get_function("TestSharedMem")
 
-                poisson_icing.gpu._set_global_const(
-                    module, "kHeight", ctypes.c_int32, height
-                )
-                poisson_icing.gpu._set_global_const(
-                    module, "kWidth", ctypes.c_int32, width
-                )
-                poisson_icing.gpu._set_global_const(
-                    module,
-                    "kSharedMemoryWidth",
-                    ctypes.c_int32,
-                    shared_mem_width,
+                poisson_icing.gpu._set_all_global_const(
+                    module, height, width, 0.0, 0, shared_mem_width
                 )
 
                 kernel_args = (
@@ -202,32 +200,39 @@ def test_shared_mem(width, height, initial_image, block_dim, shared_mem_buff):
 
                 shared_mem = d_shared_mem.get()
 
+            # ignore buffed shared memory content, they are not used in
+            # calculations
             if shared_mem_buff > 0:
                 shared_mem = shared_mem[:, 0:-shared_mem_buff]
 
             image = np.pad(initial_image, 1, "symmetric")
 
+            # calculate the indices to get the within-block image from the image
+            # for image_id_x_1 and image_id_y_1, we add 2 for the one pixel
+            # padding
             image_id_y_0 = block_id_y * block_dim[1]
             image_id_y_1 = (block_id_y + 1) * block_dim[1] + 2
-            if image_id_y_1 > height + 2:
-                image_id_y_1 = height + 2
             image_id_x_0 = block_id_x * 2 * block_dim[0]
             image_id_x_1 = (block_id_x + 1) * 2 * block_dim[0] + 2
+
+            # case if the block goes over the image boundary
+            if image_id_y_1 > height + 2:
+                image_id_y_1 = height + 2
             if image_id_x_1 > width + 2:
                 image_id_x_1 = width + 2
 
+            # extract the corresponding within-block image
             image = image[image_id_y_0:image_id_y_1, image_id_x_0:image_id_x_1]
-
+            # crop the image in shared memory, this removes the buffed shared
+            # memory content and unused pixels if they fall outside the image
+            # boundary
             shared_mem = shared_mem[0 : image.shape[0], 0 : image.shape[1]]
 
-            image[0, 0] = 0
-            image[-1, 0] = 0
-
-            if shared_mem.shape[1] > 3:
-                image[0, -1] = 0
-                image[-1, -1] = 0
-            else:
-                image[0, -1] = shared_mem[0, -1]
-                image[-1, -1] = shared_mem[-1, -1]
+            # the four corners do not need to be tested as they are unused and
+            # not assigned a value in GPU code
+            image[0, 0] = shared_mem[0, 0]
+            image[-1, 0] = shared_mem[-1, 0]
+            image[0, -1] = shared_mem[0, -1]
+            image[-1, -1] = shared_mem[-1, -1]
 
             assert np.array_equal(shared_mem, image)

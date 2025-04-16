@@ -32,6 +32,60 @@ def _set_global_const(module, name, type_func, value):
     )
 
 
+def _set_all_global_const(
+    module, height, width, interaction, max_value, shared_mem_width
+):
+    """Get all global constants for the CUDA module
+
+    Args:
+        module: CuPy module
+        height (int): height of the image
+        width (int): width of the image
+        interaction (float): interaction coefficient, real number
+        max_value (int): Poisson values up to this minus one are calculated
+        shared_mem_width (int): the width of the within block image in shared
+            memory in bytes, one of the return values in _get_shared_mem_size()
+    """
+    _set_global_const(module, "kHeight", ctypes.c_int32, height)
+    _set_global_const(module, "kWidth", ctypes.c_int32, width)
+    _set_global_const(module, "kInteraction", ctypes.c_float, interaction)
+    _set_global_const(module, "kMaxValue", ctypes.c_int32, max_value)
+    _set_global_const(
+        module, "kSharedMemoryWidth", ctypes.c_int32, shared_mem_width
+    )
+
+
+def _get_shared_mem_size(max_value, block_dim, shared_mem_buff):
+    """Work out the size of shared memory needed
+
+    We required shared memory store the following:
+     - Copies of values in the image within a block with a one pixel padding
+     - Probability distribution for each pixel in the block and Poisson
+           values 0, 1, 2, ... max_value - 1
+
+    Use shared_mem_buff to avoid bank conflicts, this pads out the shared
+    memory for storing the within-block image
+
+    Args:
+        max_value (int): Poisson values up to this minus one are calculated
+        block_dim (list of 2 ints): the number of threads per block
+        shared_mem_buff (int): how much to extend the shared memory width by
+
+    Returns:
+        list: list of two ints
+            - the width of the within block image in shared memory in bytes
+            - the total size of the shared memory in bytes
+    """
+    # multiply by 2 because each thread is allocated to a pair
+    # add 2 for the one pixel padding on left and right
+    shared_mem_width = 2 * block_dim[0] + 2 + shared_mem_buff
+    shared_mem_size = shared_mem_width * (block_dim[1] + 2) * ctypes.sizeof(
+        ctypes.c_int32
+    ) + max_value * block_dim[0] * block_dim[1] * ctypes.sizeof(ctypes.c_float)
+
+    return shared_mem_width, shared_mem_size
+
+
 def sample(
     rate_param,
     interaction,
@@ -39,7 +93,7 @@ def sample(
     n_thin,
     initial_image,
     rng,
-    n_thread_per_block,
+    block_dim,
     shared_mem_buff=0,
 ):
     """Do Gibbs sampling
@@ -53,13 +107,13 @@ def sample(
     Args:
         rate_param (np.darray): matrix, of size height x width, of non-zero
             poisson rates
-        interaction (float): interaction term, real number
+        interaction (float): interaction coefficient, real number
         n_sample (int): number of saved samples
         n_thin (int): number of samples (ot steps) between saved samples
         initial_image (np.darray): int32 image of size height x width, initial
             value to sample from
         rng: cupy random number generator
-        n_thread_per_block (tuple): size two, number of threads per block
+        block_dim (tuple): size two, number of threads per block
         shared_mem_buff (int): how much to extend the shared memory width by
 
     Returns:
@@ -79,31 +133,16 @@ def sample(
         # allocate number of blocks
         # each thread is allocated a pair of pixels
         n_block = (
-            math.ceil(width / n_thread_per_block[0] / 2),
-            math.ceil(height / n_thread_per_block[1]),
+            math.ceil(width / block_dim[0] / 2),
+            math.ceil(height / block_dim[1]),
         )
 
-        n_thread_total = (
-            n_block[0]
-            * n_block[1]
-            * n_thread_per_block[0]
-            * n_thread_per_block[1]
-        )
+        n_thread_total = n_block[0] * n_block[1] * block_dim[0] * block_dim[1]
 
-        # shared memory stores the following:
-        #  - Copies of values in image within a block with a one pixel padding
-        #  - Probability distribution for each pixel in the block and Poisson
-        #    values 0, 1, 2, ... max_value - 1
-        #
-        # x 2 because each thread is allocated to a pair
-        # + 2 for the one pixel padding on left and right
-        # shared_mem_buff if requested to avoid bank conflicts
-        shared_mem_width = 2 * n_thread_per_block[0] + 2 + shared_mem_buff
-        shared_mem_size = shared_mem_width * (
-            n_thread_per_block[1] + 2
-        ) * ctypes.sizeof(ctypes.c_int32) + max_value * n_thread_per_block[
-            0
-        ] * n_thread_per_block[1] * ctypes.sizeof(ctypes.c_float)
+        # work out size of shared memory
+        shared_mem_width, shared_mem_size = _get_shared_mem_size(
+            max_value, block_dim, shared_mem_buff
+        )
 
         # transfer to gpu
         d_image = cupy.asarray(initial_image, cupy.int32)
@@ -114,12 +153,8 @@ def sample(
         d_random_numbers = cupy.empty(n_thread_total, cupy.float32)
 
         # set gpu constants
-        _set_global_const(module, "kHeight", ctypes.c_int32, height)
-        _set_global_const(module, "kWidth", ctypes.c_int32, width)
-        _set_global_const(module, "kInteraction", ctypes.c_float, interaction)
-        _set_global_const(module, "kMaxValue", ctypes.c_int32, max_value)
-        _set_global_const(
-            module, "kSharedMemoryWidth", ctypes.c_int32, shared_mem_width
+        _set_all_global_const(
+            module, height, width, interaction, max_value, shared_mem_width
         )
 
         # gibbs sampling
@@ -139,7 +174,7 @@ def sample(
             )
             kernel(
                 n_block,
-                n_thread_per_block,
+                block_dim,
                 kernel_args,
                 shared_mem=shared_mem_size,
             )
