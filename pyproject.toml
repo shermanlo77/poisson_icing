@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poisson_icing"
-version = "0.1.0"
+version = "0.1.1"
 description = "Gibbs sampling for the Poisson-Ising model"
 license = { file = "LICENSE" }
 authors = [{ name = "Sherman Lo", email = "s.lo@qmul.ac.uk" }]
