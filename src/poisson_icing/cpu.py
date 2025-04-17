@@ -194,7 +194,6 @@ def sample(rate_param, interaction, n_sample, n_thin, initial_image, rng):
     # gibbs sampling here, switch between white and black after every sample
     sample_id = 0
     for i_iter in range(n_sample * n_thin):
-
         _sample(
             rate_param,
             interaction,

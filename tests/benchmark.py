@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 import poisson_icing.gpu

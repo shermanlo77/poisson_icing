@@ -183,6 +183,7 @@ def test_shared_mem(width, height, initial_image, block_dim, shared_mem_buff):
 
                 kernel = module.get_function("TestSharedMem")
 
+                # set other parameters to zero as they are unused
                 poisson_icing.gpu._set_all_global_const(
                     module, height, width, 0.0, 0, shared_mem_width
                 )
