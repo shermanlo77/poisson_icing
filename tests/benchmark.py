@@ -52,7 +52,7 @@ import poisson_icing.gpu
         ((32, 8), 0),
         ((64, 4), 0),
         ((128, 2), 0),
-        ((256, 2), 0),
+        ((256, 1), 0),
     ],
 )
 @pytest.mark.parametrize("rounds", [32])
