@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poisson_icing"
-version = "0.1.1"
+version = "0.1.2"
 description = "Gibbs sampling for the Poisson-Ising model"
 license = { file = "LICENSE" }
 authors = [{ name = "Sherman Lo", email = "s.lo@qmul.ac.uk" }]
@@ -15,7 +15,8 @@ dependencies = ["numpy", "scipy"]
 [project.optional-dependencies]
 cuda11x = ["cupy-cuda11x"]
 cuda12x = ["cupy-cuda12x"]
-test = ["pytest", "matplotlib", "pytest-benchmark"]
+test = ["matplotlib", "pytest", "pytest-benchmark"]
+script = ["matplotlib", "pandas", "tabulate", "uncertainties"]
 
 [tool.setuptools.package-data]
 "*" = ["*.ptx"]

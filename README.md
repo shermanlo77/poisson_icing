@@ -40,10 +40,10 @@ are
 
 ```bash
 pip install .
-pip install .[cuda11x]
+pip install .[cuda12x]
 ```
 
-If you use CUDA 12, replace the last line with `pip install .[cuda12x]` instead.
+If you use CUDA 11, replace the last line with `pip install .[cuda11x]` instead.
 
 ### How to Install - CPU Only
 
@@ -89,9 +89,9 @@ yourself.
 
 #### Apptainer Definition File
 
-An Apptainer definition file `poisson_icing.def` and
-`poisson_icing_cpu_only.def` is provided should you wish to build this library
-in a container or use it to further troubleshoot.
+Apptainer definition files `poisson_icing.def`, `poisson_icing_cuda11.def`
+and `poisson_icing_cpu_only.def` are provided should you wish to build this
+library in a container or use it to further troubleshooting.
 
 ## Examples
 
@@ -217,4 +217,45 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
+
+## Reproducing Results
+
+This section is on reproducing results from the accompanying blog post.
+
+### Running the Experiment
+
+This experiment does a benchmark using various grid configurations to
+investigate how different grid configurations affected performance.
+
+Requires additional packages, install them in a virtual environment with
+
+```bash
+pip install .[test]
+```
+
+Run the experiment with
+
+```bash
+pytest tests/benchmark.py
+```
+
+This was repeated for three different GPUs, V100, A100 and H100.
+
+### Plotting
+
+Requires additional packages, install them in a virtual environment with
+
+```bash
+pip install .[script]
+```
+
+Save the screen output from the experiment in the previous section to a file.
+Examples are provided called `script/volta*`, `script/ampere*` and
+`script/hopper*`.
+
+Plot graphs and show tables from the provided results with
+
+```bash
+python script/plot.py script/volta* script/ampere* script/hopper*
 ```

@@ -1,5 +1,5 @@
 SRC := src/poisson_icing
-NVCC_ARCH	?= sm_75
+NVCC_ARCH	?= sm_80
 CUPY_CUDA_VERSION ?= cuda11x
 
 LIB	:= -L$(CUDA_HOME)/lib64 -lcudart
